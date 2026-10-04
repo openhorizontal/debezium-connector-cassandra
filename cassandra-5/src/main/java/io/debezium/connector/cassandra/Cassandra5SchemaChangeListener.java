@@ -79,6 +79,12 @@ public class Cassandra5SchemaChangeListener extends AbstractSchemaChangeListener
             Schema.instance.updateHandler.apply(schema -> schema.withAddedOrUpdated(newKMD), true);
             Keyspace.openWithoutSSTables(keyspaceMetadata.getName().toString());
             LOGGER.info("Added keyspace [{}] to schema instance.", keyspaceMetadata.describe(true));
+
+            // The driver reports the tables of a new keyspace only through this event, never with
+            // onTableCreated, so tables created together with their keyspace would never be captured
+            for (com.datastax.oss.driver.api.core.metadata.schema.TableMetadata table : keyspaceMetadata.getTables().values()) {
+                onTableCreated(table);
+            }
         }
         catch (Exception e) {
             LOGGER.warn("Error happened while adding the keyspace {} to schema instance.", keyspaceMetadata.getName(), e);
