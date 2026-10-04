@@ -98,6 +98,14 @@ public class CommitLogIdxParser {
             processCommitLog(commitLog, commitLogPosition);
             return new CommitLogProcessingResult(commitLog);
         }
+        catch (final InterruptedException ex) {
+            // The connector is stopping. This is not an error of the commit log: returning ERROR would
+            // enqueue an EOF event and relocate a segment Cassandra may still be writing to, so the rest
+            // of it would never be read after a restart.
+            Thread.currentThread().interrupt();
+            LOGGER.warn("Processing of {} interrupted, it will be resumed after a restart", commitLog);
+            return new CommitLogProcessingResult(commitLog, COMPLETED_PREMATURELY);
+        }
         catch (final Exception ex) {
             LOGGER.error("Processing of {} errored out", commitLog, ex);
             return new CommitLogProcessingResult(commitLog, ERROR, ex);
