@@ -330,8 +330,10 @@ public class SnapshotProcessor extends AbstractProcessor {
     }
 
     private static Object readColTtl(Row row, String col) {
-        if (row.getColumnDefinitions().contains(CqlIdentifier.fromInternal(ttlAlias(col)))) {
-            return CassandraTypeDeserializer.deserialize(DataTypes.COUNTER, row.getBytesUnsafe(ttlAlias(col)));
+        // ttl() returns an int (4 bytes); reading it as a counter (8 bytes) failed with IndexOutOfBoundsException
+        // for every cell that has a TTL, stopping the whole connector
+        if (row.getColumnDefinitions().contains(CqlIdentifier.fromInternal(ttlAlias(col))) && !row.isNull(ttlAlias(col))) {
+            return row.getInt(ttlAlias(col));
         }
         return null;
     }
