@@ -14,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.datastax.oss.driver.api.core.CqlIdentifier;
+import com.datastax.oss.driver.api.core.metadata.schema.KeyspaceMetadata;
 import com.datastax.oss.driver.api.core.metadata.schema.SchemaChangeListenerBase;
 import com.datastax.oss.driver.api.core.metadata.schema.TableMetadata;
 import com.datastax.oss.driver.api.core.session.Session;
@@ -56,6 +57,27 @@ public class AbstractSchemaChangeListener extends SchemaChangeListenerBase {
                     return true;
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Registers the cdc=true tables of the driver's metadata that the schema holder doesn't know. The
+     * driver can miss a table when several are created in quick succession, and nothing would register
+     * it until a restart, so its changes would be silently skipped.
+     */
+    public void registerMissingCdcTables(final Session session) {
+        for (KeyspaceMetadata keyspace : session.getMetadata().getKeyspaces().values()) {
+            for (TableMetadata tm : keyspace.getTables().values()) {
+                Object cdc = tm.getOptions().get(CqlIdentifier.fromInternal("cdc"));
+                if (tm.isVirtual() || cdc == null || !cdc.toString().equals("true")
+                        || schemaHolder.getKeyValueSchema(new KeyspaceTable(tm)) != null) {
+                    continue;
+                }
+                logger.warn("Table {}.{} has cdc enabled but isn't registered, registering it now",
+                        tm.getKeyspace().asInternal(), tm.getName().asInternal());
+                onKeyspaceCreated(keyspace);
+                onTableCreated(tm);
+            }
+        }
     }
 
     public SchemaHolder getSchemaHolder() {
